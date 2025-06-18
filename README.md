@@ -16,7 +16,7 @@ A real-time gaze tracking system using L2CS-Net with MediaPipe integration for d
 
 ### Prerequisites
 - Python 3.8 or higher
-- Webcam
+- Webcam (configured for camera 8 on desktop)
 - macOS/Linux/Windows
 
 ### Installation
@@ -42,6 +42,16 @@ A real-time gaze tracking system using L2CS-Net with MediaPipe integration for d
    ```bash
    ./run.sh
    ```
+   
+   The run script will give you options:
+   - **Option 1**: Run gaze tracker on camera 8 (default for desktop)
+   - **Option 2**: Test available cameras
+   - **Option 3**: Exit
+
+### Camera Configuration
+- **Default**: Camera 8 (configured for desktop)
+- **Testing**: Use the camera test utility to find available cameras
+- **Custom**: Modify `camera_id` parameter in the main script
 
 ## 🎯 Usage
 

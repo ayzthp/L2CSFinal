@@ -17,9 +17,32 @@ if [ ! -f "left_hand_focus_bisector_with_bbox.py" ]; then
     exit 1
 fi
 
-# Run the gaze tracker
-echo "🚀 Launching gaze tracker..."
-python3 left_hand_focus_bisector_with_bbox.py
+# Check if user wants to test cameras first
+echo ""
+echo "🔧 Options:"
+echo "1. Run gaze tracker (camera 8)"
+echo "2. Test available cameras"
+echo "3. Exit"
+echo ""
+read -p "Enter choice (1-3): " choice
+
+case $choice in
+    1)
+        echo "🚀 Launching gaze tracker on camera 8..."
+        python3 left_hand_focus_bisector_with_bbox.py
+        ;;
+    2)
+        echo "🔍 Testing available cameras..."
+        python3 test_camera.py
+        ;;
+    3)
+        echo "👋 Goodbye!"
+        ;;
+    *)
+        echo "❌ Invalid choice. Running gaze tracker..."
+        python3 left_hand_focus_bisector_with_bbox.py
+        ;;
+esac
 
 # Deactivate virtual environment on exit
 deactivate 

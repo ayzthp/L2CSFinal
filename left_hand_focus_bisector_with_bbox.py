@@ -57,9 +57,13 @@ class SmoothGazeFilter:
         return self.smoothed_gaze.copy()
 
 class LeftHandFocusBisectorWithBBox:
-    def __init__(self, save_dir="captures"):
+    def __init__(self, save_dir="captures", camera_id=8):
         """Initialize the left hand focus bisector tracker with bounding box"""
         print("🚀 Initializing Left Hand Focus Bisector Tracker with Bounding Box...")
+        
+        # Camera configuration
+        self.camera_id = camera_id
+        print(f"📷 Camera ID: {self.camera_id}")
         
         # Create save directory
         self.save_dir = save_dir
@@ -249,13 +253,14 @@ class LeftHandFocusBisectorWithBBox:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, text_color, 1)
     
     def run(self):
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(self.camera_id)  # Use specified camera
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS, 30)  # Set to 30 FPS for smoother detection
         print("🎯 STARTED — look at your left hand")
         print("📦 Bounding box will be drawn around detected left hand")
         print("👁️ Optimized for smooth left-looking detection")
+        print("📷 Using camera", self.camera_id)
         
         cnt = 0; t0 = time.time()
         try:
@@ -428,7 +433,8 @@ class LeftHandFocusBisectorWithBBox:
             print("🏁 Tracker ended.")
 
 def main():
-    LeftHandFocusBisectorWithBBox().run()
+    # Use camera 8 for desktop by default
+    LeftHandFocusBisectorWithBBox(camera_id=8).run()
 
 if __name__ == "__main__":
     main()
