@@ -253,14 +253,26 @@ class LeftHandFocusBisectorWithBBox:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, text_color, 1)
     
     def run(self):
-        cap = cv2.VideoCapture(self.camera_id)  # Use specified camera
+        # Try camera 8 first, then fallback to camera 0
+        cap = cv2.VideoCapture(self.camera_id)
+        if not cap.isOpened():
+            print(f"⚠️  Camera {self.camera_id} not available, trying camera 0...")
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                print("❌ No camera available!")
+                return
+            else:
+                print("✅ Using camera 0 (fallback)")
+        else:
+            print(f"✅ Using camera {self.camera_id}")
+        
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS, 30)  # Set to 30 FPS for smoother detection
         print("🎯 STARTED — look at your left hand")
         print("📦 Bounding box will be drawn around detected left hand")
         print("👁️ Optimized for smooth left-looking detection")
-        print("📷 Using camera", self.camera_id)
+        print("📷 Using camera", self.camera_id if cap.isOpened() else "0")
         
         cnt = 0; t0 = time.time()
         try:

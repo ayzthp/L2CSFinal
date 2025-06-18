@@ -1,0 +1,6 @@
+Collecting opencv-contrib-python
+  Using cached opencv_contrib_python-4.11.0.86-cp37-abi3-macosx_13_0_arm64.whl.metadata (20 kB)
+Requirement already satisfied: numpy>=1.21.2 in ./l2cs_env/lib/python3.12/site-packages (from opencv-contrib-python) (1.26.4)
+Using cached opencv_contrib_python-4.11.0.86-cp37-abi3-macosx_13_0_arm64.whl (46.3 MB)
+Installing collected packages: opencv-contrib-python
+Successfully installed opencv-contrib-python-4.11.0.86
