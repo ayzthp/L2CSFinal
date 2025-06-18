@@ -22,9 +22,10 @@ echo ""
 echo "🔧 Options:"
 echo "1. Run gaze tracker (camera 8)"
 echo "2. Test available cameras"
-echo "3. Exit"
+echo "3. System check and monitoring"
+echo "4. Exit"
 echo ""
-read -p "Enter choice (1-3): " choice
+read -p "Enter choice (1-4): " choice
 
 case $choice in
     1)
@@ -36,6 +37,10 @@ case $choice in
         python3 test_camera.py
         ;;
     3)
+        echo "🔍 Running system check and monitoring..."
+        python3 system_check.py
+        ;;
+    4)
         echo "👋 Goodbye!"
         ;;
     *)
