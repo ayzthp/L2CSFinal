@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Left Hand Focus Bisector Tracker
-Enhanced version using MediaPipe FaceMesh for exact pupil and nose-tip landmarks
-Focused on left hand detection and posture alignment
+Left Hand Focus Bisector Tracker — Saves to MP4
 """
 
 import cv2
@@ -11,45 +9,34 @@ import mediapipe as mp
 import torch
 import time
 import math
+import os
 from typing import Optional, Tuple
 
-# Import our L2CS components
 from l2cs.model import L2CS
 from utils.face_detection import FaceDetector
 from utils.gaze_estimation import convert_raw_gaze_predictions_to_angles
 from utils.transforms import preprocess_face_for_gaze_estimation
 from utils.model_utils import load_l2cs_model, download_l2cs_pretrained_model
-import os
 
 class LeftHandFocusBisector:
     def __init__(self, save_dir="captures"):
-        """Initialize the left hand focus bisector tracker"""
-        print("🚀 Initializing Left Hand Focus Bisector Tracker...")
-        
-        # Create save directory
+        print("🚀 Initializing...")
         self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
-        print(f"📁 Save directory: {self.save_dir}")
-        
-        # Initialize device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"Using device: {self.device}")
-        
-        # Load L2CS model
+        print(f"📁 Save directory: {self.save_dir} | Using device: {self.device}")
+
+        # Load model
         model_path = "pretrained_models/L2CSNet_gaze360.pkl"
         if not os.path.exists(model_path):
             model_path = download_l2cs_pretrained_model()
         self.gaze_model = load_l2cs_model(model_path, self.device)
-        
-        # Face detector for cropping
+
         self.face_detector = FaceDetector()
-        
-        # Model config
         self.model_input_size = (448, 448)
         self.dataset_mean = (0.485, 0.456, 0.406)
         self.dataset_std = (0.229, 0.224, 0.225)
-        
-        # MediaPipe hands
+
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
@@ -57,7 +44,6 @@ class LeftHandFocusBisector:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        # MediaPipe FaceMesh
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             static_image_mode=False,
@@ -66,18 +52,14 @@ class LeftHandFocusBisector:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        
-        # Focus & alignment params
+
         self.focus_threshold = 5
         self.focus_counter = 0
         self.similarity_threshold = 0.85
-        self.min_gaze_strength = 0.02
-        self.alignment_threshold = 10  # degrees
-        
-        print("✅ Left Hand Focus Bisector Tracker initialized!")
-    
-    def detect_left_hand(self, frame: np.ndarray) -> Optional[Tuple[int, int]]:
-        """Detect left hand and return its center position"""
+        self.min_gaze_strength = 0.13
+        self.alignment_threshold = 10
+
+    def detect_left_hand(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         res = self.hands.process(rgb)
         if res.multi_hand_landmarks and res.multi_handedness:
@@ -90,36 +72,40 @@ class LeftHandFocusBisector:
                     y = int((wrist.y + mcp.y)/2 * h)
                     return (x, y)
         return None
-    
-    def calculate_focus_similarity(self, gaze: np.ndarray, center: Tuple[int,int], hand: Tuple[int,int]) -> float:
-        """Cosine similarity between gaze vector and eye_center→hand"""
+
+    def calculate_focus_similarity(self, gaze, center, hand):
         hv = np.array([hand[0]-center[0], hand[1]-center[1]])
         gn, hn = np.linalg.norm(gaze), np.linalg.norm(hv)
         if gn==0 or hn==0: return 0.0
         return max(0.0, float(np.dot(gaze/gn, hv/hn)))
-    
-    def angle_between(self, u: Tuple[float,float], v: Tuple[float,float]) -> Optional[float]:
-        """Angle (deg) between 2D vectors"""
+
+    def angle_between(self, u, v):
         dot = u[0]*v[0] + u[1]*v[1]
         nu, nv = math.hypot(*u), math.hypot(*v)
         if nu*nv==0: return None
         return math.degrees(math.acos(max(-1, min(1, dot/(nu*nv)))))
-    
-    def calculate_alignment_score(self, LP, RP, NT, hand, gaze: np.ndarray) -> float:
-        """Score = |angle(LP→hand, gaze) - angle(RP→hand, gaze)|"""
+
+    def calculate_alignment_score(self, LP, RP, NT, hand, gaze):
         L = (hand[0]-LP[0], hand[1]-LP[1])
         R = (hand[0]-RP[0], hand[1]-RP[1])
         V = tuple(gaze)
         t1 = self.angle_between(L, V) or 0
         t2 = self.angle_between(R, V) or 0
         return abs(t1 - t2)
-    
+
     def run(self):
         cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(3, 640); cap.set(4, 480)
         print("🎯 STARTED — look at your left hand")
-        
+
+        # 🔴 Video Writer setup
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_path = os.path.join(self.save_dir, 'output_video.mp4')
+        fps = 20
+        frame_size = (int(cap.get(3)), int(cap.get(4)))
+        out = cv2.VideoWriter(video_path, fourcc, fps, frame_size)
+        print(f"📽️ Recording to {video_path}")
+
         cnt = 0; t0 = time.time()
         try:
             while True:
@@ -127,11 +113,8 @@ class LeftHandFocusBisector:
                 if not ret: break
                 cnt += 1
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Detect left hand
+
                 lh = self.detect_left_hand(frame)
-                
-                # FaceMesh
                 mesh = self.face_mesh.process(rgb)
                 gaze_vec = None; center=None; LP=None; RP=None; NT=None
                 if mesh.multi_face_landmarks:
@@ -142,19 +125,18 @@ class LeftHandFocusBisector:
                     RP = (int(rp_lm.x*w), int(rp_lm.y*h))
                     NT = (int(nt_lm.x*w), int(nt_lm.y*h))
                     center = ((LP[0]+RP[0])//2, (LP[1]+RP[1])//2)
-                    # Draw pupils & nose
                     cv2.circle(frame, LP, 3, (255,0,0), -1)
                     cv2.circle(frame, RP, 3, (255,0,0), -1)
                     cv2.circle(frame, NT, 5, (0,0,255), -1)
                     cv2.circle(frame, center,4,(0,255,255),-1)
-                    # Crop face for gaze
+
                     faces = self.face_detector.detect_faces(frame)
                     if faces:
                         x1,y1,x2,y2,_ = faces[0]
                         face_img = frame[y1:y2, x1:x2]
                         if face_img.size>0:
                             ft = preprocess_face_for_gaze_estimation(face_img,
-                                   self.model_input_size, self.dataset_mean, self.dataset_std)
+                                self.model_input_size, self.dataset_mean, self.dataset_std)
                             with torch.no_grad():
                                 ft = ft.to(self.device)
                                 yp, pp = self.gaze_model(ft)
@@ -163,94 +145,70 @@ class LeftHandFocusBisector:
                             gx = -math.sin(math.radians(y_ang))
                             gy = -math.sin(math.radians(p_ang))
                             gaze_vec = np.array([gx, gy])
-                            # draw default blue arrow from nose tip
-                            L = 150
-                            nx, ny = int(NT[0]+L*gx), int(NT[1]+L*gy)
+                            nx, ny = int(NT[0]+150*gx), int(NT[1]+150*gy)
                             cv2.arrowedLine(frame, NT, (nx,ny), (255,0,0), 2, tipLength=0.3)
                             cv2.putText(frame, f"Gaze: Y={y_ang:.1f}° P={p_ang:.1f}°",
                                         (10,30), cv2.FONT_HERSHEY_SIMPLEX,0.6,(255,255,255),2)
-                
-                # draw left hand
+
                 if lh:
                     cv2.circle(frame, lh, 10, (0,255,0), -1)
                     cv2.putText(frame, "Left Hand", (lh[0]-30, lh[1]-20),
                                 cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,0),2)
-                
-                # focus logic
+
                 if gaze_vec is not None and center and lh and LP and RP and NT:
                     strength = np.linalg.norm(gaze_vec)
                     cv2.putText(frame, f"Strength: {strength:.2f}", (10,60),
                                 cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
-                    if strength>=self.min_gaze_strength:
+                    if strength >= self.min_gaze_strength:
                         sim = self.calculate_focus_similarity(gaze_vec, center, lh)
                         cv2.putText(frame, f"Sim: {sim:.2f}", (10,80),
                                     cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
-                        if sim>self.similarity_threshold:
-                            self.focus_counter+=1
-                        else:
-                            self.focus_counter=0
+                        self.focus_counter += 1 if sim > self.similarity_threshold else -self.focus_counter
                     else:
-                        self.focus_counter=0
-                        cv2.putText(frame, "Gaze too weak",(10,80),
+                        self.focus_counter = 0
+                        cv2.putText(frame, "Gaze too weak", (10,80),
                                     cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,255),1)
-                    
-                    if self.focus_counter>=self.focus_threshold:
-                        # alignment score
+
+                    if self.focus_counter >= self.focus_threshold:
                         score = self.calculate_alignment_score(LP, RP, NT, lh, gaze_vec)
-                        aligned = score<=self.alignment_threshold
+                        aligned = score <= self.alignment_threshold
                         col = (0,255,0) if aligned else (255,0,0)
-                        # pupils->hand
-                        cv2.line(frame, LP, lh, col,2)
-                        cv2.line(frame, RP, lh, col,2)
-                        # nose->hand arrow
+                        cv2.line(frame, LP, lh, col, 2)
+                        cv2.line(frame, RP, lh, col, 2)
                         ex, ey = int(NT[0]+150*gaze_vec[0]), int(NT[1]+150*gaze_vec[1])
-                        cv2.arrowedLine(frame, NT, (ex,ey), col,4,tipLength=0.5)
-                        # annotations
-                        cv2.putText(frame, f"Score: {score:.1f}°",(10,220),
+                        cv2.arrowedLine(frame, NT, (ex,ey), col, 4, tipLength=0.5)
+                        cv2.putText(frame, f"Score: {score:.1f}°", (10,220),
                                     cv2.FONT_HERSHEY_SIMPLEX,0.6,col,2)
-                        status = "Perfect Posture" if aligned else "Misaligned Posture"
-                        cv2.putText(frame, status,(10,250),
-                                    cv2.FONT_HERSHEY_SIMPLEX,0.7,col,2)
-                        cv2.putText(frame, "FOCUSING ON LEFT HAND!",(10,280),
+                        cv2.putText(frame, "FOCUSING ON LEFT HAND!", (10,250),
                                     cv2.FONT_HERSHEY_SIMPLEX,0.8,(0,255,0),2)
-                        cv2.putText(frame, f"Focus: {self.focus_counter}/{self.focus_threshold}",
-                                    (10,310),cv2.FONT_HERSHEY_SIMPLEX,0.6,(0,255,0),2)
                     else:
                         cv2.putText(frame, f"Count: {self.focus_counter}/{self.focus_threshold}",
-                                    (10,100),cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
+                                    (10,100), cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
                 else:
-                    self.focus_counter=0
-                
-                # status & fps
-                st_col = (0,255,0) if self.focus_counter>=self.focus_threshold else (255,255,255)
-                st_txt = "FOCUSED" if self.focus_counter>=self.focus_threshold else "TRACKING"
-                cv2.putText(frame, f"Status: {st_txt}", (frame.shape[1]-200,30),
-                            cv2.FONT_HERSHEY_SIMPLEX,0.6,st_col,2)
-                if cnt%30==0:
-                    fps = cnt/(time.time()-t0)
-                    cv2.putText(frame, f"FPS: {fps:.1f}", (frame.shape[1]-100,60),
-                                cv2.FONT_HERSHEY_SIMPLEX,0.5,(255,255,255),1)
-                
-                cv2.imshow('Left Hand Focus Bisector Tracker', frame)
-                k = cv2.waitKey(1)&0xFF
-                if k==ord('q'): break
-                if k==ord('s'):
-                    ts = int(time.time())
-                    st = "focused" if self.focus_counter>=self.focus_threshold else "tracking"
-                    al = "aligned" if (score<=self.alignment_threshold) else "misaligned"
-                    fn = f"left_bisector_{st}_{al}_{ts}.jpg"
-                    fp = os.path.join(self.save_dir, fn)
-                    cv2.imwrite(fp, frame)
-                    print(f"📸 Saved: {fp}")
-                    cv2.putText(frame, f"SAVED: {fn}", (10,frame.shape[0]-30),
-                                cv2.FONT_HERSHEY_SIMPLEX,0.6,(0,255,0),2)
-        except KeyboardInterrupt:
-            pass
+                    self.focus_counter = 0
+
+                cv2.putText(frame, f"Status: {'FOCUSED' if self.focus_counter >= self.focus_threshold else 'TRACKING'}",
+                            (frame.shape[1]-200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                            (0,255,0) if self.focus_counter >= self.focus_threshold else (255,255,255), 2)
+
+                if cnt % 30 == 0:
+                    fps_now = cnt / (time.time()-t0)
+                    cv2.putText(frame, f"FPS: {fps_now:.1f}", (frame.shape[1]-100, 60),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+
+                # 🔴 Save frame to video
+                out.write(frame)
+
+                cv2.imshow("Left Hand Focus Bisector Tracker", frame)
+                if cv2.waitKey(1)&0xFF == ord('q'):
+                    break
         finally:
             cap.release()
+            out.release()
             cv2.destroyAllWindows()
             total = time.time()-t0
             print(f"\n📊 Processed {cnt} frames in {total:.1f}s → {cnt/total:.1f} FPS")
+            print(f"🎬 Saved video to {video_path}")
             print("🏁 Tracker ended.")
 
 def main():
